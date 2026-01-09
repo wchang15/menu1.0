@@ -4,12 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { KEYS, loadBlob, saveBlob, loadJson, saveJson } from '@/lib/storage';
-import {
-  downloadAssetBlob,
-  downloadJsonAsset,
-  uploadAsset,
-  uploadJsonAsset,
-} from '@/lib/cloudAssets';
+import { downloadAssetBlob, downloadJsonAsset } from '@/lib/cloudAssets';
 import { clearCurrentUser, getCurrentUser } from '@/lib/session';
 import { supabase } from '@/lib/supabaseClient';
 import CustomCanvas from './CustomCanvas';
@@ -565,37 +560,21 @@ export default function MenuEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bgUrl]);
 
-  const uploadAssetToCloud = async (file, assetKey) => {
-    if (!file || !assetKey) return null;
+  const uploadBg = async (file) => {
+    if (!file) return;
 
     setAssetUploading(true);
     setAssetUploadMessage('업로드 URL 생성 중...');
 
     try {
-      const path = await uploadAsset({
-        assetKey,
-        file,
-        contentType: file.type || 'application/octet-stream',
-      });
+      await saveBlob(KEYS.MENU_BG, file, { throwOnCloudError: true });
       setAssetUploadMessage('클라우드 업로드 완료!');
-      return path;
     } catch (error) {
       setAssetUploadMessage(error.message || '업로드 중 문제가 발생했습니다.');
-      throw error;
     } finally {
       setAssetUploading(false);
     }
-  };
 
-  const uploadBg = async (file) => {
-    if (!file) return;
-    try {
-      await uploadAssetToCloud(file, ASSET_KEYS.MENU_BG);
-    } catch (e) {
-      console.error(e);
-    }
-
-    await saveBlob(KEYS.MENU_BG, file);
     setBgBlob(file);
     // ✅ 업로드 즉시 맨위로
     setTimeout(() => hardResetScrollTop('auto'), 0);
@@ -605,16 +584,19 @@ export default function MenuEditor() {
   const uploadIntroVideo = async (file) => {
     if (!file) return;
 
-    try {
-      await uploadAssetToCloud(file, ASSET_KEYS.INTRO_VIDEO);
-    } catch (e) {
-      console.error(e);
-    }
+    setAssetUploading(true);
+    setAssetUploadMessage('업로드 URL 생성 중...');
 
-    await saveBlob(KEYS.INTRO_VIDEO, file);
-    setAssetUploadMessage(
-      lang === 'ko' ? '인트로 영상이 변경되었습니다.' : 'Intro video has been updated.'
-    );
+    try {
+      await saveBlob(KEYS.INTRO_VIDEO, file, { throwOnCloudError: true });
+      setAssetUploadMessage(
+        lang === 'ko' ? '인트로 영상이 변경되었습니다.' : 'Intro video has been updated.'
+      );
+    } catch (error) {
+      setAssetUploadMessage(error.message || '업로드 중 문제가 발생했습니다.');
+    } finally {
+      setAssetUploading(false);
+    }
 
     if (introVideoInputRef.current) {
       introVideoInputRef.current.value = '';
@@ -626,26 +608,29 @@ export default function MenuEditor() {
     const p = Number(pageNum);
     if (!file || !Number.isFinite(p) || p < 1) return;
 
+    setAssetUploading(true);
+    setAssetUploadMessage('업로드 URL 생성 중...');
+
     try {
-      await uploadAssetToCloud(file, ASSET_KEYS.MENU_BG_PAGE(p));
-    } catch (e) {
-      console.error(e);
+      await saveBlob(bgPageKey(p), file, { throwOnCloudError: true });
+      setAssetUploadMessage('클라우드 업로드 완료!');
+    } catch (error) {
+      setAssetUploadMessage(error.message || '업로드 중 문제가 발생했습니다.');
+    } finally {
+      setAssetUploading(false);
     }
 
-    await saveBlob(bgPageKey(p), file);
     setBgOverrides((prev) => ({ ...(prev || {}), [p]: file }));
 
     // overrides 인덱스 저장
     try {
       const nextIndex = { ...(await loadJson(BG_OVERRIDES_KEY)) };
       nextIndex[p] = true;
-      await saveJson(BG_OVERRIDES_KEY, nextIndex);
-      await uploadJsonAsset({ assetKey: ASSET_KEYS.MENU_BG_OVERRIDES, data: nextIndex });
+      await saveJson(BG_OVERRIDES_KEY, nextIndex, { throwOnCloudError: true });
     } catch {
       try {
         const nextIndex = { [p]: true };
-        await saveJson(BG_OVERRIDES_KEY, nextIndex);
-        await uploadJsonAsset({ assetKey: ASSET_KEYS.MENU_BG_OVERRIDES, data: nextIndex });
+        await saveJson(BG_OVERRIDES_KEY, nextIndex, { throwOnCloudError: true });
       } catch {}
     }
   };
@@ -665,8 +650,7 @@ export default function MenuEditor() {
       const idx = (await loadJson(BG_OVERRIDES_KEY)) || {};
       const nextIdx = { ...(idx || {}) };
       delete nextIdx[p];
-      await saveJson(BG_OVERRIDES_KEY, nextIdx);
-      await uploadJsonAsset({ assetKey: ASSET_KEYS.MENU_BG_OVERRIDES, data: nextIdx });
+      await saveJson(BG_OVERRIDES_KEY, nextIdx, { throwOnCloudError: true });
     } catch {}
   };
 
@@ -1055,11 +1039,16 @@ export default function MenuEditor() {
   const handleSaveAll = async () => {
     const next = { ...layout };
     setLayout(next);
-    await saveJson(menuLayoutKey(lang), next);
+    setAssetUploading(true);
+    setAssetUploadMessage('업로드 URL 생성 중...');
+
     try {
-      await uploadJsonAsset({ assetKey: ASSET_KEYS.MENU_LAYOUT(lang), data: next });
+      await saveJson(menuLayoutKey(lang), next, { throwOnCloudError: true });
+      setAssetUploadMessage('클라우드 업로드 완료!');
     } catch (error) {
-      console.error(error);
+      setAssetUploadMessage(error.message || '업로드 중 문제가 발생했습니다.');
+    } finally {
+      setAssetUploading(false);
     }
 
     setPreview(false);
